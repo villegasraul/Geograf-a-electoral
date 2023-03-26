@@ -1,0 +1,260 @@
+---
+title: "MAPE: Geografía Electoral. Sesion 5ª: Representación visual con R"
+author: "Fernando De la Cuesta"
+date: "`r Sys.Date()`"
+output: html_document
+---
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## PAQUETES EN R: **TIDYVERSE** + **SF**
+
+
+
+#### Manejo de datos con **TIDYVERSE**.
+
+  -Grupo de paquetes de R que comparten principios.
+  
+  -Comparten la misma lógica.
+  
+  -Contiene: ggplot2, dplyr, tidyr, readr, purr, tibble, stringr, forcats, etc.
+  
+  
+
+#### Representación geográfica con **SF**.
+
+  -Es un gran avance para hacer de R un **G.I.S**.
+  
+  -Con **SF** todos los objetos son data.frame o tibble añadiendo una columna con las coordenadas geométricas.
+  
+  -Deja obsoleto a **SP**
+
+
+# PRIMERA PRÁCTICA: **ANALISIS VISUAL DE LA PARTICIPACIÓN EN LA COMUNIDAD DE MADRID EN 2019**
+
+Para esta primera sesión de R, queremos visualizar la participación electoral en 2019 para la Comunidad de Madrid.
+
+Desarrollo temporal:
+
+1. **28 de abril de 2019: Elecciones a Cortes Generales.**
+
+2. 28 de abril de 2019: Elecciones al Senado.
+
+3. **26 de mayo de 2019: Elecciones al Parlamento Europeo.**
+
+4. **26 de mayo de 2019: Elecciones a la Asamblea de Madrid.**
+
+5. 26 de mayo de 2019: Elecciones municipales.
+
+Tenemos los siguientes datos:
+
+1. Excel de las Elecciones a Cortes generales de abril 2019 para la Comunidad de Madrid.
+
+2. CSV (comas) de las Elecciones Europeas de mayo 2019 para la Comunidad de Madrid.
+
+3. dta (Stata) de las Elecciones a la Asamblea de Madrid de mayo 2019 para la Comunidad de Madrid.
+
+4. Shapefile (ESRI) de los municipios de la Comunidad de Madrid.
+
+## 1ª PARTE: **CARGAMOS LOS ARCHIVOS EN R** 
+
+Recordad instalar los paquetes:
+#install.packages("tidyverse")
+#install.packages("sf")
+
+```{r, message=FALSE}
+
+library(tidyverse)
+library(sf)
+library(readxl) #para importar archivos xlsx (excel)
+library(haven) #para importar archivos dta (stata)
+
+
+GEN_CAM_A19 <- read_excel(
+   "generales_abril_2019_CAM.xlsx",
+   sheet = "MUNIS")
+
+EU_CAM_MY19 <- read_csv2(
+   "europeas_mayo_2019_CAM.csv")
+
+
+AUT_CAM_MY19 <- read_dta(
+   "autonomicas_mayo_2019_CAM.dta")
+```
+
+```{r, echo=TRUE}
+glimpse(GEN_CAM_A19)
+
+glimpse(EU_CAM_MY19)
+
+glimpse(AUT_CAM_MY19)
+```
+
+```{r, echo=TRUE}
+summary(GEN_CAM_A19)
+
+summary(EU_CAM_MY19)
+
+summary(AUT_CAM_MY19)
+```
+
+## 2ª PARTE: **TRABAJAMOS LAS BASES PARA QUE SEAN MÁS MANEJABLES** 
+
+Trabajamos los datos para que en los tres dataframes, nos quedemos solo con los valores de "código de municipio", "municipio", "censo" y "votos con los que podremos calcular la participación (normalizada)".
+
+-Importante: En las generales y en las europeas, la participación es la suma de voto a candidatuas + nulos +blancos.
+
+```{r, echo=TRUE}
+GEN_CAM_A19_P  <- GEN_CAM_A19 %>% select(
+  cod.mun,MUNICIPIO,CENSO,BLANCOS,NULOS,VOTOS.CANDIDATURAS)
+EU_CAM_MY19_P <- EU_CAM_MY19 %>% select(
+  cod.mun,MUNICIPIO,CENSO,BLANCOS,NULOS,VOTOS_CANDIDATURAS)
+AUT_CAM_MY19_P <- AUT_CAM_MY19 %>% select(
+  codmun,MUNICIPIO,CENSO,VOTOS)
+
+```
+
+## 3ª PARTE: **HALLAMOS EL VALOR DE PARTICIPACIÓN NORMALIZADO (PORCENTAJE DEL CENSO)** 
+
+Con los datos de participación (votos candidaturas + blancos + nulos y votos) y los datos de censo obtenemos la participación (% de censo) que está normalizada.
+
+Con esto evitamos el prblema de la Unidad de Área Modificable
+
+```{r, echo=TRUE}
+GEN_CAM_A19_P$VOTOS <- GEN_CAM_A19_P$VOTOS.CANDIDATURAS +
+  GEN_CAM_A19_P$BLANCOS + GEN_CAM_A19_P$NULOS
+GEN_CAM_A19_P$PART <- GEN_CAM_A19_P$VOTOS/GEN_CAM_A19_P$CENSO*100 #Creamos el porcentaje de voto 
+GEN_CAM_A19_P$PARTPORC  <-  paste0(round(GEN_CAM_A19_P$PART, 2), "%") # Añadimos el símbolo de porcentaje33
+
+GEN_CAM_A19_P <- GEN_CAM_A19_P[-c(180), ] ## Con esto borro la fila del total
+
+EU_CAM_MY19_P$VOTOS <- EU_CAM_MY19_P$VOTOS_CANDIDATURAS +
+  EU_CAM_MY19_P$BLANCOS + EU_CAM_MY19_P$NULOS
+EU_CAM_MY19_P$PART <- EU_CAM_MY19_P$VOTOS/EU_CAM_MY19_P$CENSO*100
+EU_CAM_MY19_P$PARTPORC  <-  paste0(round(EU_CAM_MY19_P$PART, 2), "%")
+
+EU_CAM_MY19_P <- EU_CAM_MY19_P[-c(180), ]
+
+AUT_CAM_MY19_P$PART <- AUT_CAM_MY19_P$VOTOS/AUT_CAM_MY19_P$CENSO*100
+AUT_CAM_MY19_P$PARTPORC  <-  paste0(round(AUT_CAM_MY19_P$PART, 2), "%")
+
+AUT_CAM_MY19_P <- AUT_CAM_MY19_P[-c(180), ]
+
+summary(GEN_CAM_A19_P$PART)
+
+summary(EU_CAM_MY19_P$PART)
+
+summary(AUT_CAM_MY19_P$PART)
+
+```
+
+
+## 4ª PARTE: **CARGAMOS EL SHP (SHAPEFILE) Y LO ADAPTAMOS PARA LA FUSIÓN CON LOS DATOS ELECTORALES** 
+
+Los shapefiles (ESRI) contienen, al menos, tres archivos. Los que no son .shp son los metadatos. Los metadatos tienen la información relevante para cartografíar.
+
+Primero cargamos el shp con el paquete sf mediante st_read. En la última columna (geometry) está la información espacial.
+
+Seguidamente, como no tenemos el código correcto para fusionar con los datos electorales, creamos el código ine mediante la construcción de la variable código provincial y depurando el geocodigo para tener el código del municipio.
+
+Importante: El código INE es la construcción del código de provincia + código de municipio
+
+```{r}
+muni_cam <- st_read("200001692.shp")
+muni_cam$CPROV <- "28"
+muni_cam$MUN  <- substr(muni_cam$GEOCODIGO,1,3) ##Le digo que solo se quede con las tres primeras cifras del geocódigo
+muni_cam$codmun <- paste0(muni_cam$CPROV,muni_cam$MUN)
+
+glimpse(muni_cam)
+
+```
+
+## 5ª PARTE: **CAMBIAMOS EL FORMATO DE CODMUN DE GENERALES Y EUROPEAS PARA QUE SIGA EL CRITERIO UNIFICADO Y PODER FUSIONARLO CON EL SHAPEFILE** 
+
+El código de los municipios de los dataframes de europeas y generales tienen dos problemas:
+1. En las europeas el código es number.
+2. Las dos primeras cifras son las del código autonómico (12XXXXX)
+
+Transformamos a string/character el código de las europeas y depuramos el código para tener un código del municipio en string/character entre 28001 y 28183.
+
+Anécdota: Lozoyuela-Navas-Sieteiglesias, Puentes Viejas y Tres Cantos tienen un código 28(PRO)+9XX porque son de nueva creación (escisiones de otros)
+
+
+```{r}
+EU_CAM_MY19_P$cod.mun  <- as.character(EU_CAM_MY19_P$cod.mun)
+EU_CAM_MY19_P$codmun  <- substr(EU_CAM_MY19_P$cod.mun,3,8)
+
+GEN_CAM_A19_P$codmun  <- substr(GEN_CAM_A19_P$cod.mun,3,8)
+
+glimpse(EU_CAM_MY19_P)
+glimpse(GEN_CAM_A19_P)
+```
+
+
+## 6ª PARTE: **FUSIÓN DE DATOS DE PARTICIPACIÓN CON EL SHAPEFILE** 
+
+Unimos (merge) los datos participación a los datos con geometría para poder representarlos.
+Obtendremos tres dataframes geográficos:
+1. Generales.
+2. Europeas.
+3. Autonómicas.
+
+Para hacerlo más manejable nos quedamos con la variable de 1) código de municipio, 2) el nombre (en la geográfica) y 3) la participación y 4)participación con el símbolo de porcentaje.
+
+IMPORTANTE: Tener en común el nombre de la columna para fusionar los datos. En nuestro caso el código del municipio.
+
+```{r}
+GEN_CAM_A19_PF <- GEN_CAM_A19_P %>% select(
+  codmun,PART,PARTPORC)
+
+EU_CAM_MY19_PF <- EU_CAM_MY19_P %>% select(
+  codmun,PART,PARTPORC)
+
+AUT_CAM_MY19_PF <- AUT_CAM_MY19_P %>% select(
+  codmun,PART,PARTPORC)
+
+GEN_CAM_A19_SHP <- left_join(muni_cam, GEN_CAM_A19_PF)
+EU_CAM_MY19_SHP <- left_join(muni_cam, EU_CAM_MY19_PF)
+AUT_CAM_MY19_SHP <- left_join(muni_cam, AUT_CAM_MY19_PF)
+
+```
+
+
+## 7ª PARTE: **REPRESENTAMOS GEOGRÁFICAMENTE LOS NIVELES DE PARTICIPACIÓN** 
+
+Creamos un mapa por cada uno de los dataframes con los datos de participación.
+
+```{r}
+ggplot(data = GEN_CAM_A19_SHP) +
+  geom_sf(aes(fill=PART))+
+   theme_void()+
+   theme(plot.title = element_text(size = 12, face = "bold"),
+        legend.position = "right",
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 11))+
+  labs(title = "Participación en la CAM en las elecciones generales 2019",
+       fill="Participación (%)")
+
+ggplot(data = AUT_CAM_MY19_SHP) +
+  geom_sf(aes(fill=PART))+
+   theme_void()+
+   theme(plot.title = element_text(size = 12, face = "bold"),
+        legend.position = "right",
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 11))+
+  labs(title = "Participación en la CAM en las elecciones autonómicas 2019",
+       fill="Participación (%)")
+
+ggplot(data = EU_CAM_MY19_SHP) +
+  geom_sf(aes(fill=PART))+
+   theme_void()+
+   theme(plot.title = element_text(size = 12, face = "bold"),
+        legend.position = "right",
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 11))+
+  labs(title = "Participación en la CAM en las elecciones europeas 2019",
+       fill="Participación (%)")
+```
+
